@@ -1,30 +1,41 @@
 # Tab Overview
 
-A Chrome extension that provides a kanban-style tab manager with automatic domain grouping, search, and quick access to frequently visited sites.
+A Chrome extension that provides a beautiful tab manager with automatic domain grouping, daily quotes, and quick access to frequently visited sites.
 
 ## Features
 
-### Kanban Tab Overview
-- **Masonry layout** — Tabs are grouped by domain and displayed in a 4-column waterfall layout
+### Tab Overview Dashboard
+- **Masonry layout** — Tabs grouped by domain in a multi-column waterfall grid
+- **Two-line tab details** — Each tab shows title, URL path, and status badges (Pinned / Playing / Loading)
+- **Color-coded cards** — Each domain card has a unique colored accent bar for visual distinction
 - **Real-time search** — Filter tabs by title or URL with instant results
 - **Tab management** — Click to switch, close individual tabs, or close all tabs in a domain group
-- **Hover preview** — Hover over any tab card to see full title and URL details
+- **Hover preview** — Hover over any tab to see full details in a floating popup
+
+### Daily Quote
+- **Bilingual quotes** — English + Chinese daily sentence powered by [iCIBA API](http://open.iciba.com/dsapi/)
+- **Fallback support** — Built-in offline quotes when API is unavailable
 
 ### Auto Tab Grouping
 - **Automatic domain grouping** — Tabs from the same domain are automatically grouped in Chrome's native tab bar
-- **Color-coded groups** — Each domain gets a consistent color for easy identification
-- **Smart cleanup** — Groups are automatically removed when only one tab remains in a domain
+- **Rainbow color assignment** — Groups get colors in sequential rainbow order (blue, red, yellow, green, pink, purple, cyan, orange)
+- **Count-based titles** — Group titles show domain name with tab count, e.g. `GitHub (5)`
+- **Smart cleanup** — Groups are automatically removed when only one tab remains
 
 ### Quick Access Sidebar
-- **Top Sites** — Right sidebar shows your most visited sites in a card grid layout
-- **One-click open** — Click any site card to open it in a new tab
+- **Top Sites** — Right sidebar shows your most visited sites in a card grid
+- **One-click open** — Click any site to open in a new tab
 - **Deduplicated** — Same-domain sites are merged into a single entry
+
+## Screenshots
+
+> Open a new tab or press `Cmd+Shift+E` to see the overview dashboard.
 
 ## Triggers
 
 - **Keyboard shortcut**: `Cmd+Shift+E` (Mac) / `Ctrl+Shift+E` (Windows/Linux)
 - **Toolbar icon**: Click the extension icon
-- **New tab page**: Automatically replaces Chrome's default new tab page
+- **New tab page**: Replaces Chrome's default new tab page
 
 ## Installation
 
@@ -37,21 +48,21 @@ A Chrome extension that provides a kanban-style tab manager with automatic domai
 
 2. Open Chrome and navigate to `chrome://extensions/`
 
-3. Enable **Developer mode** (toggle in the top-right corner)
+3. Enable **Developer mode** (toggle in top-right corner)
 
-4. Click **Load unpacked**
+4. Click **Load unpacked** and select the project folder
 
-5. Select the `tab-overview` folder from the cloned repository
-
-6. The extension is now active — open a new tab or press `Cmd+Shift+E` to see the overview
+5. The extension is now active — open a new tab to see the overview
 
 ### Permissions
 
-The extension requires the following permissions:
-- `tabs` — Access tab information (title, URL, favicon)
-- `tabGroups` — Create and manage tab groups in the browser tab bar
-- `topSites` — Display your most frequently visited sites
-- `favicon` — Load website favicons for display
+| Permission | Purpose |
+|------------|---------|
+| `tabs` | Access tab information (title, URL, favicon) |
+| `tabGroups` | Create and manage native tab groups |
+| `topSites` | Display most frequently visited sites |
+| `favicon` | Load website favicons |
+| `host_permissions` | Fetch daily quotes from iCIBA API |
 
 ## Keyboard Shortcuts
 
@@ -63,10 +74,21 @@ The extension requires the following permissions:
 
 ## Tech Stack
 
-- **Pure JavaScript** — No build step, no dependencies
+- **Pure JavaScript** — No build step, no framework, no dependencies
 - **Chrome Extension Manifest V3**
-- **CSS Custom Properties** — Modern design tokens
+- **CSS Custom Properties** — Design tokens for consistent theming
+- **Google Fonts** — Newsreader (serif headings) + DM Sans (body)
 - **Chrome APIs** — tabs, tabGroups, topSites, favicon
+
+## Design
+
+Visual style inspired by [tab-out](https://github.com/zarazhangrui/tab-out) — warm paper aesthetic with subtle noise texture, serif/sans-serif type pairing, and editorial card layout.
+
+Key design choices:
+- Warm color palette (`#f8f5f0` paper, `#1a1613` ink, `#c8713a` amber accent)
+- SVG fractal noise texture overlay
+- Staggered fade-up entrance animations
+- Masonry card grid with colored accent borders
 
 ## Project Structure
 
@@ -77,12 +99,18 @@ tab-overview/
 ├── overview/
 │   ├── overview.html      # Main UI page
 │   ├── overview.js        # App logic: rendering, search, interactions
-│   └── overview.css       # Styles (modern, Linear-inspired design)
+│   └── overview.css       # Styles (warm paper aesthetic)
 └── icons/
     ├── icon16.png
     ├── icon48.png
     └── icon128.png
 ```
+
+## Acknowledgments
+
+- UI style reference: [tab-out](https://github.com/zarazhangrui/tab-out) by [@zarazhangrui](https://github.com/zarazhangrui)
+- Daily quotes: [iCIBA Open API](http://open.iciba.com/dsapi/)
+- Fonts: [Newsreader](https://fonts.google.com/specimen/Newsreader) & [DM Sans](https://fonts.google.com/specimen/DM+Sans)
 
 ## License
 
