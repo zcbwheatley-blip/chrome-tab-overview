@@ -429,7 +429,7 @@ header {
   font-size: 11px;
   font-family: 'DM Sans', sans-serif;
   font-weight: 500;
-  padding: 5px 14px;
+  padding: 4px 10px;
   border-radius: 4px;
   border: 1px solid var(--warm-gray);
   background: var(--card-bg);
@@ -438,7 +438,8 @@ header {
   transition: all 0.2s;
   display: inline-flex;
   align-items: center;
-  gap: 5px;
+  gap: 4px;
+  line-height: 1;
 }
 
 .action-btn:hover {
