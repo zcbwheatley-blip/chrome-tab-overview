@@ -1,6 +1,6 @@
 'use strict';
 
-// --- Domain Utils ---
+const VISIBLE_TAB_LIMIT = 8;
 
 const KNOWN_NAMES = {
   'github.com': 'GitHub',
@@ -25,7 +25,6 @@ const KNOWN_NAMES = {
   'calendar.google.com': 'Google Calendar',
 };
 
-
 function extractDomain(url) {
   try {
     return new URL(url).hostname.replace(/^www\./, '');
@@ -44,23 +43,10 @@ function getDisplayName(domain) {
   return domain;
 }
 
-function getPathDescription(url) {
-  try {
-    const u = new URL(url);
-    const path = u.pathname;
-    if (path === '/' || path === '') return u.hostname;
-    const clean = path.replace(/\/$/, '').split('/').filter(Boolean);
-    if (clean.length === 0) return u.hostname;
-    return u.hostname + '/' + clean.join('/');
-  } catch {
-    return url;
-  }
-}
-
 function groupTabsByDomain(tabs) {
   const groups = new Map();
   for (const tab of tabs) {
-    const domain = tab.domain || extractDomain(tab.url);
+    const domain = extractDomain(tab.url);
     const existing = groups.get(domain);
     if (existing) {
       existing.push(tab);
@@ -78,6 +64,35 @@ function groupTabsByDomain(tabs) {
     }));
 }
 
+function escapeHtml(str) {
+  const div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
+}
+
+function getGreeting() {
+  const hour = new Date().getHours();
+  if (hour < 12) return 'Good morning';
+  if (hour < 18) return 'Good afternoon';
+  return 'Good evening';
+}
+
+function getDateDisplay() {
+  return new Date().toLocaleDateString('en-US', {
+    weekday: 'long',
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+  });
+}
+
+function showToast(text) {
+  const toast = document.getElementById('toast');
+  const toastText = document.getElementById('toastText');
+  toastText.textContent = text;
+  toast.classList.add('visible');
+  setTimeout(() => toast.classList.remove('visible'), 2500);
+}
 
 // --- Tab Preview Popup ---
 
@@ -114,7 +129,7 @@ class TabPreview {
   }
 
   render(tab) {
-    const domain = tab.domain || extractDomain(tab.url);
+    const domain = extractDomain(tab.url);
     const tags = [];
     if (tab.pinned) tags.push('<span class="tab-preview__tag tab-preview__tag--pinned">Pinned</span>');
     if (tab.audible) tags.push('<span class="tab-preview__tag tab-preview__tag--audible">Playing</span>');
@@ -122,11 +137,11 @@ class TabPreview {
     this.el.innerHTML = `
       <div class="tab-preview__header">
         <img class="tab-preview__favicon" src="${tab.favIconUrl || ''}" alt="" onerror="this.style.display='none'">
-        <span class="tab-preview__domain">${domain}</span>
+        <span class="tab-preview__domain">${escapeHtml(domain)}</span>
         ${tags.length ? '<div class="tab-preview__tags">' + tags.join('') + '</div>' : ''}
       </div>
-      <div class="tab-preview__title">${this.escapeHtml(tab.title)}</div>
-      <div class="tab-preview__url">${this.escapeHtml(tab.url)}</div>
+      <div class="tab-preview__title">${escapeHtml(tab.title)}</div>
+      <div class="tab-preview__url">${escapeHtml(tab.url)}</div>
     `;
   }
 
@@ -160,12 +175,6 @@ class TabPreview {
     el.style.top = `${top}px`;
     el.style.visibility = '';
     el.style.display = '';
-  }
-
-  escapeHtml(str) {
-    const div = document.createElement('div');
-    div.textContent = str;
-    return div.innerHTML;
   }
 }
 
@@ -226,207 +235,36 @@ class Sidebar {
       favicon.alt = '';
       favicon.onerror = () => {
         favicon.src = '';
-        favicon.style.background = 'var(--accent-light)';
+        favicon.style.background = 'var(--warm-gray)';
       };
-
-      const info = document.createElement('div');
-      info.className = 'top-site-item__info';
 
       const name = document.createElement('div');
       name.className = 'top-site-item__name';
       name.textContent = getDisplayName(domain);
-      name.title = site.title || site.url;
-
-      info.appendChild(name);
 
       item.appendChild(favicon);
-      item.appendChild(info);
+      item.appendChild(name);
       this.listEl.appendChild(item);
     }
   }
 }
 
-// --- Kanban Column ---
-
-function createColumn(group, onTabClose, onCloseAll, preview) {
-  const column = document.createElement('div');
-  column.className = 'kanban-column';
-  column.dataset.domain = group.domain;
-
-  const header = document.createElement('div');
-  header.className = 'kanban-column__header';
-
-  const favicon = document.createElement('img');
-  favicon.className = 'kanban-column__favicon';
-  favicon.src = group.favicon;
-  favicon.alt = '';
-  favicon.onerror = () => { favicon.style.display = 'none'; };
-
-  const title = document.createElement('span');
-  title.className = 'kanban-column__title';
-  title.textContent = group.displayName;
-  title.title = group.domain;
-
-  const count = document.createElement('span');
-  count.className = 'kanban-column__count';
-  count.textContent = String(group.tabs.length);
-
-  const closeAllBtn = document.createElement('button');
-  closeAllBtn.className = 'kanban-column__close-all';
-  closeAllBtn.textContent = 'Close';
-  closeAllBtn.title = `Close all ${group.displayName} tabs`;
-
-  header.appendChild(favicon);
-  header.appendChild(title);
-  header.appendChild(count);
-  header.appendChild(closeAllBtn);
-
-
-  const list = document.createElement('div');
-  list.className = 'kanban-column__list';
-
-  for (const tab of group.tabs) {
-    list.appendChild(createTabItem(tab, onTabClose, preview));
-  }
-
-  column.appendChild(header);
-  column.appendChild(list);
-
-  closeAllBtn.addEventListener('click', (e) => {
-    e.stopPropagation();
-    const tabIds = group.tabs.map(t => t.id);
-    column.style.opacity = '0.3';
-    column.style.transform = 'scale(0.97)';
-    column.style.transition = '0.2s ease';
-    setTimeout(() => {
-      column.remove();
-      onCloseAll(tabIds);
-    }, 180);
-    for (const id of tabIds) {
-      chrome.runtime.sendMessage({ type: 'CLOSE_TAB', tabId: id });
-    }
-  });
-
-  return column;
-}
-
-// --- Tab Item ---
-
-function createTabItem(tab, onTabClose, preview) {
-  const item = document.createElement('div');
-  item.className = 'tab-item';
-  item.setAttribute('tabindex', '0');
-  item.dataset.tabId = String(tab.id);
-
-  const favicon = document.createElement('img');
-  favicon.className = 'tab-item__favicon';
-  favicon.src = tab.favIconUrl || '';
-  favicon.alt = '';
-  favicon.onerror = () => { favicon.style.display = 'none'; };
-
-  const content = document.createElement('div');
-  content.className = 'tab-item__content';
-
-  const title = document.createElement('div');
-  title.className = 'tab-item__title';
-  title.textContent = tab.title;
-  title.title = tab.title;
-
-  const url = document.createElement('div');
-  url.className = 'tab-item__url';
-  url.textContent = getPathDescription(tab.url);
-  url.title = tab.url;
-
-  content.appendChild(title);
-  content.appendChild(url);
-
-  // Meta info line
-  const meta = document.createElement('div');
-  meta.className = 'tab-item__meta';
-  const parts = [];
-  if (tab.pinned) parts.push('Pinned');
-  if (tab.audible) parts.push('Playing audio');
-  if (tab.status === 'loading') parts.push('Loading...');
-  parts.push(`Window ${tab.windowId}`);
-
-  meta.innerHTML = parts.join('<span class="tab-item__meta-dot"></span>');
-  content.appendChild(meta);
-
-  if (tab.pinned || tab.audible) {
-    const badges = document.createElement('div');
-    badges.className = 'tab-item__badges';
-    if (tab.pinned) {
-      const b = document.createElement('span');
-      b.className = 'tab-item__badge tab-item__badge--pinned';
-      b.textContent = 'Pinned';
-      badges.appendChild(b);
-    }
-    if (tab.audible) {
-      const b = document.createElement('span');
-      b.className = 'tab-item__badge tab-item__badge--audible';
-      b.textContent = 'Playing';
-      badges.appendChild(b);
-    }
-    content.appendChild(badges);
-  }
-
-  const closeBtn = document.createElement('button');
-  closeBtn.className = 'tab-item__close';
-  closeBtn.innerHTML = '&#10005;';
-
-  item.appendChild(favicon);
-  item.appendChild(content);
-  item.appendChild(closeBtn);
-
-  // Hover preview
-  item.addEventListener('mouseenter', () => {
-    preview.show(tab, item.getBoundingClientRect());
-  });
-  item.addEventListener('mouseleave', () => preview.hide());
-
-  // Click
-  item.addEventListener('click', (e) => {
-    if (e.target.closest('.tab-item__close')) {
-      e.stopPropagation();
-      item.classList.add('tab-item--exiting');
-      item.addEventListener('animationend', () => {
-        item.remove();
-        onTabClose(tab.id);
-        const col = document.querySelector(`[data-domain="${tab.domain}"]`);
-        if (col) {
-          const remaining = col.querySelector('.kanban-column__list').children.length;
-          col.querySelector('.kanban-column__count').textContent = String(remaining);
-          if (remaining === 0) col.remove();
-        }
-      }, { once: true });
-      chrome.runtime.sendMessage({ type: 'CLOSE_TAB', tabId: tab.id });
-      return;
-    }
-    chrome.runtime.sendMessage({ type: 'SWITCH_TO_TAB', tabId: tab.id, windowId: tab.windowId });
-  });
-
-  item.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter' || e.key === ' ') {
-      e.preventDefault();
-      chrome.runtime.sendMessage({ type: 'SWITCH_TO_TAB', tabId: tab.id, windowId: tab.windowId });
-    }
-  });
-
-  return item;
-}
-
-// --- Overview App ---
+// --- App ---
 
 class OverviewApp {
   constructor() {
-    this.container = document.querySelector('.tab-container');
-    this.emptyState = document.querySelector('.empty-state');
-    this.inputEl = document.querySelector('.search-bar__input');
-    this.countEl = document.querySelector('.search-bar__count');
-    this.preview = new TabPreview();
-    this.sidebar = new Sidebar();
+    this.container = document.getElementById('tabContainer');
+    this.emptyState = document.getElementById('emptyState');
+    this.inputEl = document.getElementById('searchInput');
+    this.countEl = document.getElementById('tabCount');
+    this.statEl = document.getElementById('statTabs');
     this.allTabs = [];
     this.debounceTimer = null;
+    this.preview = new TabPreview();
+    this.sidebar = new Sidebar();
+
+    document.getElementById('greeting').textContent = getGreeting();
+    document.getElementById('dateDisplay').textContent = getDateDisplay();
 
     this.inputEl.addEventListener('input', () => this.handleSearch());
     this.init();
@@ -438,9 +276,8 @@ class OverviewApp {
       this.allTabs = this.filterSelf(response || []);
       this.renderAndUpdate();
     } catch (err) {
-      console.error('Failed to load tabs:', err);
+      this.container.innerHTML = '';
     }
-
     this.listenForTabChanges();
     this.setupKeyboardNav();
   }
@@ -469,7 +306,7 @@ class OverviewApp {
     if (!trimmed) return this.allTabs;
     const terms = trimmed.toLowerCase().split(/\s+/);
     return this.allTabs.filter(tab => {
-      const haystack = `${tab.title} ${tab.url} ${tab.domain}`.toLowerCase();
+      const haystack = `${tab.title} ${tab.url}`.toLowerCase();
       return terms.every(term => haystack.includes(term));
     });
   }
@@ -478,6 +315,7 @@ class OverviewApp {
     this.countEl.textContent = visible === total
       ? `${total} tabs`
       : `${visible} / ${total}`;
+    this.statEl.textContent = String(total);
   }
 
   renderTabs(tabs) {
@@ -490,15 +328,158 @@ class OverviewApp {
     const groups = groupTabsByDomain(tabs);
 
     groups.forEach((group, i) => {
-      const col = createColumn(
-        group,
-        (tabId) => this.handleTabClosed(tabId),
-        (tabIds) => this.handleBulkClose(tabIds),
-        this.preview
-      );
-      col.style.animationDelay = `${i * 40}ms`;
-      this.container.appendChild(col);
+      const card = this.createCard(group);
+      card.style.animationDelay = `${0.25 + i * 0.05}s`;
+      this.container.appendChild(card);
     });
+  }
+
+  createCard(group) {
+    const card = document.createElement('div');
+    card.className = 'mission-card';
+    card.dataset.domain = group.domain;
+
+    const top = document.createElement('div');
+    top.className = 'mission-top';
+
+    const favicon = document.createElement('img');
+    favicon.className = 'mission-favicon';
+    favicon.src = group.favicon;
+    favicon.alt = '';
+    favicon.onerror = () => { favicon.style.display = 'none'; };
+
+    const name = document.createElement('span');
+    name.className = 'mission-name';
+    name.textContent = group.displayName;
+    name.title = group.domain;
+
+    const tag = document.createElement('span');
+    tag.className = 'mission-tag';
+    tag.textContent = `${group.tabs.length} tabs`;
+
+    top.appendChild(favicon);
+    top.appendChild(name);
+    top.appendChild(tag);
+
+    const pages = document.createElement('div');
+    pages.className = 'mission-pages';
+
+    const visibleTabs = group.tabs.slice(0, VISIBLE_TAB_LIMIT);
+    const hiddenTabs = group.tabs.slice(VISIBLE_TAB_LIMIT);
+
+    for (const tab of visibleTabs) {
+      pages.appendChild(this.createTabRow(tab));
+    }
+
+    if (hiddenTabs.length > 0) {
+      const overflow = document.createElement('div');
+      overflow.className = 'page-chip-overflow';
+      overflow.textContent = `+ ${hiddenTabs.length} more`;
+
+      overflow.addEventListener('click', (e) => {
+        e.stopPropagation();
+        overflow.remove();
+        for (const tab of hiddenTabs) {
+          const row = this.createTabRow(tab);
+          row.style.animation = 'fadeUp 0.25s ease both';
+          pages.appendChild(row);
+        }
+      });
+
+      pages.appendChild(overflow);
+    }
+
+    const actions = document.createElement('div');
+    actions.className = 'actions';
+
+    const closeAllBtn = document.createElement('button');
+    closeAllBtn.className = 'action-btn close-tabs';
+    closeAllBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12" /></svg> Close all`;
+    closeAllBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      card.classList.add('closing');
+      const tabIds = group.tabs.map(t => t.id);
+      setTimeout(() => {
+        card.remove();
+        this.handleBulkClose(tabIds);
+      }, 250);
+      for (const id of tabIds) {
+        chrome.runtime.sendMessage({ type: 'CLOSE_TAB', tabId: id });
+      }
+      showToast(`Closed ${tabIds.length} ${group.displayName} tabs`);
+    });
+
+    actions.appendChild(closeAllBtn);
+
+    card.appendChild(top);
+    card.appendChild(pages);
+    card.appendChild(actions);
+
+    return card;
+  }
+
+  createTabRow(tab) {
+    const row = document.createElement('div');
+    row.className = 'page-chip';
+    row.dataset.tabId = String(tab.id);
+
+    const favicon = document.createElement('img');
+    favicon.className = 'chip-favicon';
+    favicon.src = tab.favIconUrl || '';
+    favicon.alt = '';
+    favicon.onerror = () => { favicon.style.display = 'none'; };
+
+    const text = document.createElement('span');
+    text.className = 'chip-text';
+    text.textContent = tab.title || tab.url;
+    text.title = tab.url;
+
+    const actions = document.createElement('div');
+    actions.className = 'chip-actions';
+
+    const closeBtn = document.createElement('button');
+    closeBtn.className = 'chip-action chip-close';
+    closeBtn.title = 'Close tab';
+    closeBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12" /></svg>`;
+
+    closeBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      row.style.opacity = '0';
+      row.style.transform = 'translateX(20px)';
+      row.style.transition = '0.25s ease';
+      setTimeout(() => {
+        row.remove();
+        this.handleTabClosed(tab.id);
+        const card = this.container.querySelector(`[data-domain="${extractDomain(tab.url)}"]`);
+        if (card) {
+          const remaining = card.querySelectorAll('.page-chip').length;
+          const tagEl = card.querySelector('.mission-tag');
+          if (tagEl) tagEl.textContent = `${remaining} tabs`;
+          if (remaining === 0) {
+            card.classList.add('closing');
+            setTimeout(() => card.remove(), 250);
+          }
+        }
+      }, 250);
+      chrome.runtime.sendMessage({ type: 'CLOSE_TAB', tabId: tab.id });
+    });
+
+    actions.appendChild(closeBtn);
+
+    row.addEventListener('click', () => {
+      chrome.runtime.sendMessage({ type: 'SWITCH_TO_TAB', tabId: tab.id, windowId: tab.windowId });
+    });
+
+    row.addEventListener('mouseenter', () => {
+      this.preview.show(tab, row.getBoundingClientRect());
+    });
+    row.addEventListener('mouseleave', () => this.preview.hide());
+
+    row.appendChild(favicon);
+    row.appendChild(text);
+    row.appendChild(actions);
+
+    return row;
   }
 
   handleTabClosed(tabId) {
@@ -514,10 +495,12 @@ class OverviewApp {
   listenForTabChanges() {
     chrome.tabs.onRemoved.addListener((tabId) => {
       this.handleTabClosed(tabId);
-      const item = this.container.querySelector(`[data-tab-id="${tabId}"]`);
-      if (item) {
-        item.classList.add('tab-item--exiting');
-        item.addEventListener('animationend', () => item.remove(), { once: true });
+      const row = this.container.querySelector(`[data-tab-id="${tabId}"]`);
+      if (row) {
+        row.style.opacity = '0';
+        row.style.transform = 'translateX(20px)';
+        row.style.transition = '0.25s ease';
+        setTimeout(() => row.remove(), 250);
       }
     });
     chrome.tabs.onCreated.addListener(() => this.refresh());
