@@ -41,6 +41,47 @@ body::before {
   padding: 48px 32px 80px;
 }
 
+/* Quote Block */
+.quote-block {
+  margin-bottom: 24px;
+  padding: 14px 20px;
+  background: var(--card-bg);
+  border: 1px solid var(--warm-gray);
+  border-radius: 8px;
+  border-left: 3px solid var(--accent-amber);
+  animation: fadeUp 0.5s ease 0.15s both;
+}
+
+.quote-text {
+  font-family: 'Newsreader', serif;
+  font-size: 16px;
+  font-weight: 300;
+  font-style: italic;
+  color: var(--ink);
+  line-height: 1.5;
+  letter-spacing: -0.2px;
+  margin-bottom: 4px;
+}
+
+.quote-zh {
+  font-family: 'DM Sans', sans-serif;
+  font-style: normal;
+  font-size: 14px;
+  font-weight: 400;
+  color: var(--muted);
+  display: inline-block;
+  margin-top: 4px;
+}
+
+.quote-author {
+  font-family: 'DM Sans', sans-serif;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--muted);
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+}
+
 /* Two-column layout */
 .dashboard-columns {
   display: flex;
@@ -136,8 +177,8 @@ header {
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
-  margin-bottom: 48px;
-  padding-bottom: 24px;
+  margin-bottom: 24px;
+  padding-bottom: 20px;
   border-bottom: 1px solid var(--warm-gray);
   animation: fadeUp 0.5s ease both;
 }
@@ -265,7 +306,7 @@ header {
   left: 0;
   right: 0;
   height: 3px;
-  background: var(--warm-gray);
+  background: var(--card-accent, var(--warm-gray));
 }
 
 .mission-card:hover {
@@ -327,17 +368,16 @@ header {
 }
 
 .page-chip {
-  font-size: 13px;
   color: var(--ink);
   background: transparent;
-  padding: 8px 4px;
+  padding: 10px 6px;
   border-radius: 0;
   border: none;
   border-bottom: 1px solid rgba(154, 145, 138, 0.1);
   position: relative;
   display: flex;
-  align-items: center;
-  gap: 8px;
+  align-items: flex-start;
+  gap: 10px;
   line-height: 1.4;
   cursor: pointer;
   transition: background 0.15s ease;
@@ -352,19 +392,69 @@ header {
 }
 
 .chip-favicon {
-  width: 16px;
-  height: 16px;
+  width: 18px;
+  height: 18px;
   flex-shrink: 0;
-  border-radius: 2px;
+  border-radius: 3px;
+  margin-top: 1px;
+}
+
+.chip-content {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
 }
 
 .chip-text {
-  flex: 1;
-  min-width: 0;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--ink);
+  white-space: nowrap;
   overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.chip-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.chip-path {
+  font-size: 11px;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 180px;
+}
+
+.chip-badge {
+  font-size: 9px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  padding: 1px 6px;
+  border-radius: 3px;
+  flex-shrink: 0;
+}
+
+.chip-badge--pinned {
+  background: rgba(200, 113, 58, 0.08);
+  color: var(--accent-amber);
+}
+
+.chip-badge--audible {
+  background: rgba(90, 122, 98, 0.08);
+  color: var(--accent-sage);
+}
+
+.chip-badge--loading {
+  background: rgba(90, 107, 122, 0.08);
+  color: var(--accent-slate);
 }
 
 .chip-actions {

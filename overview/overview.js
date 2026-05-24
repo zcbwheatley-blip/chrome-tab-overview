@@ -2,6 +2,11 @@
 
 const VISIBLE_TAB_LIMIT = 8;
 
+const CARD_ACCENT_COLORS = [
+  '#4285f4', '#ea4335', '#f5b400', '#34a853',
+  '#e91e8f', '#a142f4', '#24c1e0', '#fa7b17',
+];
+
 const KNOWN_NAMES = {
   'github.com': 'GitHub',
   'stackoverflow.com': 'Stack Overflow',
@@ -41,6 +46,18 @@ function getDisplayName(domain) {
     return name.charAt(0).toUpperCase() + name.slice(1);
   }
   return domain;
+}
+
+function extractPath(url) {
+  try {
+    const u = new URL(url);
+    const path = u.pathname === '/' ? '' : u.pathname;
+    const query = u.search ? u.search.slice(0, 30) : '';
+    const full = path + query;
+    return full.length > 60 ? full.slice(0, 60) + '…' : full;
+  } catch {
+    return '';
+  }
 }
 
 function groupTabsByDomain(tabs) {
@@ -84,6 +101,27 @@ function getDateDisplay() {
     month: 'long',
     day: 'numeric',
   });
+}
+
+const FALLBACK_QUOTES = [
+  { en: 'Simplicity is the ultimate sophistication.', zh: '至繁归于至简。', author: 'Leonardo da Vinci' },
+  { en: 'Stay hungry, stay foolish.', zh: '求知若饥，虚心若愚。', author: 'Steve Jobs' },
+  { en: 'Less is more.', zh: '少即是多。', author: 'Mies van der Rohe' },
+  { en: 'Talk is cheap. Show me the code.', zh: '废话少说，放码过来。', author: 'Linus Torvalds' },
+  { en: 'The best way to predict the future is to invent it.', zh: '预测未来的最好方式就是去创造它。', author: 'Alan Kay' },
+  { en: 'Make it work, make it right, make it fast.', zh: '先让它跑起来，再让它正确，最后让它快。', author: 'Kent Beck' },
+];
+
+async function fetchDailyQuote() {
+  try {
+    const res = await fetch('https://open.iciba.com/dsapi/');
+    if (!res.ok) throw new Error('iciba failed');
+    const data = await res.json();
+    return { en: data.content || '', zh: data.note || '', author: '' };
+  } catch (_) {
+    const dayOfYear = Math.floor((Date.now() - new Date(new Date().getFullYear(), 0, 0).getTime()) / 86400000);
+    return FALLBACK_QUOTES[dayOfYear % FALLBACK_QUOTES.length];
+  }
 }
 
 function showToast(text) {
@@ -266,8 +304,26 @@ class OverviewApp {
     document.getElementById('greeting').textContent = getGreeting();
     document.getElementById('dateDisplay').textContent = getDateDisplay();
 
+    this.loadQuote();
+
     this.inputEl.addEventListener('input', () => this.handleSearch());
     this.init();
+  }
+
+  async loadQuote() {
+    const quote = await fetchDailyQuote();
+    const textEl = document.getElementById('quoteText');
+    const authorEl = document.getElementById('quoteAuthor');
+
+    if (quote.en && quote.zh) {
+      textEl.innerHTML = `"${escapeHtml(quote.en)}"<br><span class="quote-zh">${escapeHtml(quote.zh)}</span>`;
+    } else if (quote.zh) {
+      textEl.innerHTML = `"${escapeHtml(quote.zh)}"`;
+    } else {
+      textEl.innerHTML = `"${escapeHtml(quote.en)}"`;
+    }
+    authorEl.textContent = quote.author ? `— ${quote.author}` : '';
+
   }
 
   async init() {
@@ -328,16 +384,17 @@ class OverviewApp {
     const groups = groupTabsByDomain(tabs);
 
     groups.forEach((group, i) => {
-      const card = this.createCard(group);
+      const card = this.createCard(group, i);
       card.style.animationDelay = `${0.25 + i * 0.05}s`;
       this.container.appendChild(card);
     });
   }
 
-  createCard(group) {
+  createCard(group, index) {
     const card = document.createElement('div');
     card.className = 'mission-card';
     card.dataset.domain = group.domain;
+    card.style.setProperty('--card-accent', CARD_ACCENT_COLORS[index % CARD_ACCENT_COLORS.length]);
 
     const top = document.createElement('div');
     top.className = 'mission-top';
@@ -429,10 +486,50 @@ class OverviewApp {
     favicon.alt = '';
     favicon.onerror = () => { favicon.style.display = 'none'; };
 
+    const content = document.createElement('div');
+    content.className = 'chip-content';
+
     const text = document.createElement('span');
     text.className = 'chip-text';
     text.textContent = tab.title || tab.url;
     text.title = tab.url;
+
+    const meta = document.createElement('div');
+    meta.className = 'chip-meta';
+
+    const path = extractPath(tab.url);
+    if (path) {
+      const pathEl = document.createElement('span');
+      pathEl.className = 'chip-path';
+      pathEl.textContent = path;
+      meta.appendChild(pathEl);
+    }
+
+    if (tab.pinned) {
+      const badge = document.createElement('span');
+      badge.className = 'chip-badge chip-badge--pinned';
+      badge.textContent = 'Pinned';
+      meta.appendChild(badge);
+    }
+
+    if (tab.audible) {
+      const badge = document.createElement('span');
+      badge.className = 'chip-badge chip-badge--audible';
+      badge.textContent = 'Playing';
+      meta.appendChild(badge);
+    }
+
+    if (tab.status === 'loading') {
+      const badge = document.createElement('span');
+      badge.className = 'chip-badge chip-badge--loading';
+      badge.textContent = 'Loading';
+      meta.appendChild(badge);
+    }
+
+    content.appendChild(text);
+    if (meta.children.length > 0) {
+      content.appendChild(meta);
+    }
 
     const actions = document.createElement('div');
     actions.className = 'chip-actions';
@@ -476,7 +573,7 @@ class OverviewApp {
     row.addEventListener('mouseleave', () => this.preview.hide());
 
     row.appendChild(favicon);
-    row.appendChild(text);
+    row.appendChild(content);
     row.appendChild(actions);
 
     return row;
