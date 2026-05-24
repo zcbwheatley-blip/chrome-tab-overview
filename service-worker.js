@@ -138,19 +138,20 @@ async function groupTabsForDomain(domain, windowId) {
   }
 
   const tabIds = domainTabs.map(t => t.id);
+  const count = domainTabs.length;
+  const title = `${getDisplayName(domain)} (${count})`;
   const existingGroupId = await findExistingGroup(domain, windowId);
 
   if (existingGroupId !== null) {
     try {
       await chrome.tabs.group({ tabIds, groupId: existingGroupId });
+      await chrome.tabGroups.update(existingGroupId, { title });
     } catch (_) {}
   } else {
     try {
+      const color = await getNextColor(windowId);
       const groupId = await chrome.tabs.group({ tabIds, createProperties: { windowId } });
-      await chrome.tabGroups.update(groupId, {
-        title: getDisplayName(domain),
-        color: getColorForDomain(domain),
-      });
+      await chrome.tabGroups.update(groupId, { title, color });
     } catch (_) {}
   }
 }
@@ -224,8 +225,8 @@ function extractDomain(url) {
 function getDisplayName(domain) {
   if (KNOWN_NAMES[domain]) return KNOWN_NAMES[domain];
   const parts = domain.split('.');
-  if (parts.length >= 2) {
-    const name = parts[parts.length - 2];
+  if (parts.length >= 1) {
+    const name = parts[0];
     return name.charAt(0).toUpperCase() + name.slice(1);
   }
   return domain;
@@ -235,11 +236,15 @@ function isInternalUrl(url) {
   return url.startsWith('chrome://') || url.startsWith('chrome-extension://') || url.startsWith('about:');
 }
 
-function getColorForDomain(domain) {
-  let hash = 0;
-  for (let i = 0; i < domain.length; i++) {
-    hash = ((hash << 5) - hash) + domain.charCodeAt(i);
-    hash |= 0;
+async function getNextColor(windowId) {
+  try {
+    const groups = await chrome.tabGroups.query({ windowId });
+    const usedColors = groups.map(g => g.color);
+    for (const color of GROUP_COLORS) {
+      if (!usedColors.includes(color)) return color;
+    }
+    return GROUP_COLORS[groups.length % GROUP_COLORS.length];
+  } catch (_) {
+    return GROUP_COLORS[0];
   }
-  return GROUP_COLORS[Math.abs(hash) % GROUP_COLORS.length];
 }
