@@ -60,6 +60,14 @@ function extractPath(url) {
   }
 }
 
+function domainColorIndex(domain) {
+  let hash = 0;
+  for (let i = 0; i < domain.length; i++) {
+    hash = ((hash << 5) - hash + domain.charCodeAt(i)) | 0;
+  }
+  return ((hash % CARD_ACCENT_COLORS.length) + CARD_ACCENT_COLORS.length) % CARD_ACCENT_COLORS.length;
+}
+
 function groupTabsByDomain(tabs) {
   const groups = new Map();
   for (const tab of tabs) {
@@ -78,6 +86,7 @@ function groupTabsByDomain(tabs) {
       displayName: getDisplayName(domain),
       favicon: domainTabs[0].favIconUrl || '',
       tabs: domainTabs,
+      colorIndex: domainColorIndex(domain),
     }));
 }
 
@@ -394,7 +403,7 @@ class OverviewApp {
     const card = document.createElement('div');
     card.className = 'mission-card';
     card.dataset.domain = group.domain;
-    card.style.setProperty('--card-accent', CARD_ACCENT_COLORS[index % CARD_ACCENT_COLORS.length]);
+    card.style.setProperty('--card-accent', CARD_ACCENT_COLORS[group.colorIndex]);
 
     const top = document.createElement('div');
     top.className = 'mission-top';

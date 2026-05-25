@@ -149,7 +149,7 @@ async function groupTabsForDomain(domain, windowId) {
     } catch (_) {}
   } else {
     try {
-      const color = await getNextColor(windowId);
+      const color = domainColor(domain);
       const groupId = await chrome.tabs.group({ tabIds, createProperties: { windowId } });
       await chrome.tabGroups.update(groupId, { title, color });
     } catch (_) {}
@@ -160,7 +160,10 @@ async function findExistingGroup(domain, windowId) {
   try {
     const groups = await chrome.tabGroups.query({ windowId });
     const displayName = getDisplayName(domain);
-    const match = groups.find(g => g.title === displayName || g.title === domain);
+    const match = groups.find(g => {
+      const base = (g.title || '').replace(/\s*\(\d+\)$/, '');
+      return base === displayName || base === domain;
+    });
     return match ? match.id : null;
   } catch (_) {
     return null;
@@ -236,15 +239,10 @@ function isInternalUrl(url) {
   return url.startsWith('chrome://') || url.startsWith('chrome-extension://') || url.startsWith('about:');
 }
 
-async function getNextColor(windowId) {
-  try {
-    const groups = await chrome.tabGroups.query({ windowId });
-    const usedColors = groups.map(g => g.color);
-    for (const color of GROUP_COLORS) {
-      if (!usedColors.includes(color)) return color;
-    }
-    return GROUP_COLORS[groups.length % GROUP_COLORS.length];
-  } catch (_) {
-    return GROUP_COLORS[0];
+function domainColor(domain) {
+  let hash = 0;
+  for (let i = 0; i < domain.length; i++) {
+    hash = ((hash << 5) - hash + domain.charCodeAt(i)) | 0;
   }
+  return GROUP_COLORS[((hash % GROUP_COLORS.length) + GROUP_COLORS.length) % GROUP_COLORS.length];
 }
