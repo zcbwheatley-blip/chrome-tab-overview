@@ -179,6 +179,10 @@ async function cleanupGroups(windowId) {
         for (const t of tabs) {
           try { await chrome.tabs.ungroup(t.id); } catch (_) {}
         }
+      } else {
+        const domain = extractDomain(tabs[0].url || '');
+        const title = `${getDisplayName(domain)} (${tabs.length})`;
+        try { await chrome.tabGroups.update(group.id, { title }); } catch (_) {}
       }
     }
   } catch (_) {}
