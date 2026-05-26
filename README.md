@@ -29,7 +29,13 @@ A Chrome extension that provides a beautiful tab manager with automatic domain g
 
 ## Screenshots
 
-> Open a new tab or press `Cmd+Shift+E` to see the overview dashboard.
+### Overview Dashboard
+
+![Overview Dashboard](screenshots/overview-dashboard.png)
+
+### Auto Tab Grouping
+
+![Auto Tab Grouping](screenshots/auto-tab-grouping.png)
 
 ## Triggers
 
