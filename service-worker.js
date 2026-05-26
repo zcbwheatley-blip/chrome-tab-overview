@@ -22,9 +22,14 @@ const KNOWN_NAMES = {
 // --- Action: open overview ---
 
 chrome.action.onClicked.addListener(async () => {
-  await chrome.tabs.create({
-    url: chrome.runtime.getURL('overview/overview.html')
-  });
+  const overviewUrl = chrome.runtime.getURL('overview/overview.html');
+  const tabs = await chrome.tabs.query({ url: overviewUrl });
+  if (tabs.length > 0) {
+    await chrome.tabs.update(tabs[0].id, { active: true });
+    await chrome.windows.update(tabs[0].windowId, { focused: true });
+  } else {
+    await chrome.tabs.create({ url: overviewUrl });
+  }
 });
 
 // --- Message handling ---
