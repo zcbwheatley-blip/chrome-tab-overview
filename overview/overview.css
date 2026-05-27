@@ -147,8 +147,7 @@ header {
   justify-content: space-between;
   align-items: flex-start;
   margin-bottom: 24px;
-  padding-bottom: 20px;
-  border-bottom: 1px solid var(--warm-gray);
+  padding-bottom: 0;
   animation: fadeUp 0.5s ease both;
 }
 

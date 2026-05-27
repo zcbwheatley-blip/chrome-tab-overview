@@ -344,13 +344,34 @@ class OverviewApp {
   }
 
   setupHeaderActions() {
-    document.getElementById('btnGroupAll').addEventListener('click', () => {
-      chrome.runtime.sendMessage({ type: 'GROUP_ALL_TABS' });
-      showToast('Grouped all tabs by domain');
+    const collapseBtn = document.getElementById('btnCollapseAll');
+    const collapseLabelNode = collapseBtn.lastChild;
+    collapseBtn.addEventListener('click', () => {
+      const cards = this.container.querySelectorAll('.mission-card');
+      const allCollapsed = [...cards].every(c => c.classList.contains('collapsed'));
+      cards.forEach(c => c.classList.toggle('collapsed', !allCollapsed));
+      collapseLabelNode.textContent = allCollapsed ? ' Collapse' : ' Expand';
+      showToast(allCollapsed ? 'Expanded all cards' : 'Collapsed all cards');
     });
-    document.getElementById('btnUngroupAll').addEventListener('click', () => {
-      chrome.runtime.sendMessage({ type: 'UNGROUP_ALL_TABS' });
-      showToast('Ungrouped all tabs');
+
+    document.getElementById('btnCloseDups').addEventListener('click', async () => {
+      const seen = new Map();
+      const dupeIds = [];
+      for (const tab of this.allTabs) {
+        if (seen.has(tab.url)) {
+          dupeIds.push(tab.id);
+        } else {
+          seen.set(tab.url, tab.id);
+        }
+      }
+      if (dupeIds.length === 0) {
+        showToast('No duplicate tabs found');
+        return;
+      }
+      for (const id of dupeIds) {
+        await chrome.runtime.sendMessage({ type: 'CLOSE_TAB', tabId: id });
+      }
+      showToast(`Closed ${dupeIds.length} duplicate tab${dupeIds.length > 1 ? 's' : ''}`);
     });
   }
 
