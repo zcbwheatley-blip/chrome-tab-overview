@@ -1,4 +1,4 @@
-'use strict';
+import { extractDomain, getDisplayName, domainHash } from '../shared.js';
 
 const VISIBLE_TAB_LIMIT = 8;
 
@@ -6,47 +6,6 @@ const CARD_ACCENT_COLORS = [
   '#4285f4', '#ea4335', '#f5b400', '#34a853',
   '#e91e8f', '#a142f4', '#24c1e0', '#fa7b17',
 ];
-
-const KNOWN_NAMES = {
-  'github.com': 'GitHub',
-  'stackoverflow.com': 'Stack Overflow',
-  'google.com': 'Google',
-  'youtube.com': 'YouTube',
-  'twitter.com': 'Twitter',
-  'x.com': 'X',
-  'reddit.com': 'Reddit',
-  'linkedin.com': 'LinkedIn',
-  'notion.so': 'Notion',
-  'figma.com': 'Figma',
-  'slack.com': 'Slack',
-  'discord.com': 'Discord',
-  'medium.com': 'Medium',
-  'npmjs.com': 'npm',
-  'vercel.com': 'Vercel',
-  'aws.amazon.com': 'AWS',
-  'mail.google.com': 'Gmail',
-  'docs.google.com': 'Google Docs',
-  'drive.google.com': 'Google Drive',
-  'calendar.google.com': 'Google Calendar',
-};
-
-function extractDomain(url) {
-  try {
-    return new URL(url).hostname.replace(/^www\./, '');
-  } catch {
-    return 'other';
-  }
-}
-
-function getDisplayName(domain) {
-  if (KNOWN_NAMES[domain]) return KNOWN_NAMES[domain];
-  const parts = domain.split('.');
-  if (parts.length >= 1) {
-    const name = parts[0];
-    return name.charAt(0).toUpperCase() + name.slice(1);
-  }
-  return domain;
-}
 
 function extractPath(url) {
   try {
@@ -61,10 +20,7 @@ function extractPath(url) {
 }
 
 function domainColorIndex(domain) {
-  let hash = 0;
-  for (let i = 0; i < domain.length; i++) {
-    hash = ((hash << 5) - hash + domain.charCodeAt(i)) | 0;
-  }
+  const hash = domainHash(domain);
   return ((hash % CARD_ACCENT_COLORS.length) + CARD_ACCENT_COLORS.length) % CARD_ACCENT_COLORS.length;
 }
 
@@ -112,7 +68,7 @@ function getDateDisplay() {
   });
 }
 
-const FALLBACK_QUOTES = [
+const QUOTES = [
   { en: 'Simplicity is the ultimate sophistication.', zh: '至繁归于至简。', author: 'Leonardo da Vinci' },
   { en: 'Stay hungry, stay foolish.', zh: '求知若饥，虚心若愚。', author: 'Steve Jobs' },
   { en: 'Less is more.', zh: '少即是多。', author: 'Mies van der Rohe' },
@@ -121,16 +77,9 @@ const FALLBACK_QUOTES = [
   { en: 'Make it work, make it right, make it fast.', zh: '先让它跑起来，再让它正确，最后让它快。', author: 'Kent Beck' },
 ];
 
-async function fetchDailyQuote() {
-  try {
-    const res = await fetch('https://open.iciba.com/dsapi/');
-    if (!res.ok) throw new Error('iciba failed');
-    const data = await res.json();
-    return { en: data.content || '', zh: data.note || '', author: '' };
-  } catch (_) {
-    const dayOfYear = Math.floor((Date.now() - new Date(new Date().getFullYear(), 0, 0).getTime()) / 86400000);
-    return FALLBACK_QUOTES[dayOfYear % FALLBACK_QUOTES.length];
-  }
+function getDailyQuote() {
+  const dayOfYear = Math.floor((Date.now() - new Date(new Date().getFullYear(), 0, 0).getTime()) / 86400000);
+  return QUOTES[dayOfYear % QUOTES.length];
 }
 
 function showToast(text) {
@@ -307,6 +256,7 @@ class OverviewApp {
     this.statEl = document.getElementById('statTabs');
     this.allTabs = [];
     this.debounceTimer = null;
+    this.refreshTimer = null;
     this.preview = new TabPreview();
     this.sidebar = new Sidebar();
 
@@ -319,20 +269,13 @@ class OverviewApp {
     this.init();
   }
 
-  async loadQuote() {
-    const quote = await fetchDailyQuote();
+  loadQuote() {
+    const quote = getDailyQuote();
     const textEl = document.getElementById('quoteText');
     const authorEl = document.getElementById('quoteAuthor');
 
-    if (quote.en && quote.zh) {
-      textEl.innerHTML = `"${escapeHtml(quote.en)}"<br><span class="quote-zh">${escapeHtml(quote.zh)}</span>`;
-    } else if (quote.zh) {
-      textEl.innerHTML = `"${escapeHtml(quote.zh)}"`;
-    } else {
-      textEl.innerHTML = `"${escapeHtml(quote.en)}"`;
-    }
-    authorEl.textContent = quote.author ? `— ${quote.author}` : '';
-
+    textEl.innerHTML = `"${escapeHtml(quote.en)}"<br><span class="quote-zh">${escapeHtml(quote.zh)}</span>`;
+    authorEl.textContent = `— ${quote.author}`;
   }
 
   async init() {
@@ -617,10 +560,13 @@ class OverviewApp {
     });
   }
 
-  async refresh() {
-    const response = await chrome.runtime.sendMessage({ type: 'GET_ALL_TABS' });
-    this.allTabs = this.filterSelf(response || []);
-    this.renderAndUpdate();
+  refresh() {
+    if (this.refreshTimer !== null) clearTimeout(this.refreshTimer);
+    this.refreshTimer = setTimeout(async () => {
+      const response = await chrome.runtime.sendMessage({ type: 'GET_ALL_TABS' });
+      this.allTabs = this.filterSelf(response || []);
+      this.renderAndUpdate();
+    }, 300);
   }
 
   setupKeyboardNav() {
