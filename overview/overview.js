@@ -323,31 +323,35 @@ class OverviewApp {
   constructor() {
     this.container = document.getElementById('tabContainer');
     this.emptyState = document.getElementById('emptyState');
-    this.inputEl = document.getElementById('searchInput');
     this.countEl = document.getElementById('tabCount');
     this.statEl = document.getElementById('statTabs');
     this.allTabs = [];
-    this.debounceTimer = null;
     this.refreshTimer = null;
     this.preview = new TabPreview();
     this.sidebar = new Sidebar();
 
     document.getElementById('greeting').textContent = getGreeting();
     document.getElementById('dateDisplay').textContent = getDateDisplay();
-
     this.loadQuote();
-
-    this.inputEl.addEventListener('input', () => this.handleSearch());
+    this.setupHeaderActions();
     this.init();
   }
 
   loadQuote() {
     const quote = getDailyQuote();
-    const textEl = document.getElementById('quoteText');
-    const authorEl = document.getElementById('quoteAuthor');
+    const el = document.getElementById('headerQuote');
+    el.textContent = `"${quote.en}" — ${quote.author}`;
+  }
 
-    textEl.innerHTML = `"${escapeHtml(quote.en)}"<br><span class="quote-zh">${escapeHtml(quote.zh)}</span>`;
-    authorEl.textContent = `— ${quote.author}`;
+  setupHeaderActions() {
+    document.getElementById('btnGroupAll').addEventListener('click', () => {
+      chrome.runtime.sendMessage({ type: 'GROUP_ALL_TABS' });
+      showToast('Grouped all tabs by domain');
+    });
+    document.getElementById('btnUngroupAll').addEventListener('click', () => {
+      chrome.runtime.sendMessage({ type: 'UNGROUP_ALL_TABS' });
+      showToast('Ungrouped all tabs');
+    });
   }
 
   async init() {
@@ -359,7 +363,6 @@ class OverviewApp {
       this.container.innerHTML = '';
     }
     this.listenForTabChanges();
-    this.setupKeyboardNav();
   }
 
   filterSelf(tabs) {
@@ -368,35 +371,11 @@ class OverviewApp {
   }
 
   renderAndUpdate() {
-    this.updateCount(this.allTabs.length, this.allTabs.length);
+    const total = this.allTabs.length;
+    this.countEl.textContent = `${total} tabs`;
+    this.statEl.textContent = String(total);
     this.renderTabs(this.allTabs);
     this.renderStatBars();
-  }
-
-  handleSearch() {
-    if (this.debounceTimer !== null) clearTimeout(this.debounceTimer);
-    this.debounceTimer = setTimeout(() => {
-      const filtered = this.filter(this.inputEl.value);
-      this.updateCount(filtered.length, this.allTabs.length);
-      this.renderTabs(filtered);
-    }, 150);
-  }
-
-  filter(query) {
-    const trimmed = query.trim();
-    if (!trimmed) return this.allTabs;
-    const terms = trimmed.toLowerCase().split(/\s+/);
-    return this.allTabs.filter(tab => {
-      const haystack = `${tab.title} ${tab.url}`.toLowerCase();
-      return terms.every(term => haystack.includes(term));
-    });
-  }
-
-  updateCount(visible, total) {
-    this.countEl.textContent = visible === total
-      ? `${total} tabs`
-      : `${visible} / ${total}`;
-    this.statEl.textContent = String(total);
   }
 
   renderTabs(tabs) {
@@ -687,21 +666,6 @@ class OverviewApp {
     }
   }
 
-  setupKeyboardNav() {
-    document.addEventListener('keydown', (e) => {
-      const isSearchFocused = document.activeElement === this.inputEl;
-      if (e.key === '/' && !isSearchFocused) {
-        e.preventDefault();
-        this.inputEl.focus();
-        return;
-      }
-      if (e.key === 'Escape' && isSearchFocused) {
-        this.inputEl.value = '';
-        this.inputEl.blur();
-        this.renderAndUpdate();
-      }
-    });
-  }
 }
 
 new OverviewApp();
