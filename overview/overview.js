@@ -484,12 +484,9 @@ class OverviewApp {
       pages.appendChild(overflow);
     }
 
-    const actions = document.createElement('div');
-    actions.className = 'actions';
-
     const closeAllBtn = document.createElement('button');
-    closeAllBtn.className = 'action-btn close-tabs';
-    closeAllBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12" /></svg> Close all`;
+    closeAllBtn.className = 'mission-close-all';
+    closeAllBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12" /></svg> Close all`;
     closeAllBtn.addEventListener('click', (e) => {
       e.stopPropagation();
       card.classList.add('closing');
@@ -504,11 +501,9 @@ class OverviewApp {
       showToast(`Closed ${tabIds.length} ${group.displayName} tabs`);
     });
 
-    actions.appendChild(closeAllBtn);
-
     card.appendChild(top);
     card.appendChild(pages);
-    card.appendChild(actions);
+    card.appendChild(closeAllBtn);
 
     return card;
   }
