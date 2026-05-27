@@ -152,6 +152,15 @@ body::before {
   transform: scale(0.96);
 }
 
+.top-site-item.dragging {
+  opacity: 0.5;
+  transform: scale(0.9);
+}
+
+.top-site-item.drag-over {
+  box-shadow: 0 0 0 2px var(--accent-amber);
+}
+
 .top-site-item__favicon {
   width: 32px;
   height: 32px;
@@ -290,13 +299,13 @@ header {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  transition: box-shadow 0.25s ease, transform 0.25s ease;
+  transition: background 0.3s ease, box-shadow 0.3s ease, transform 0.3s cubic-bezier(0.16, 1, 0.3, 1), backdrop-filter 0.3s ease;
   cursor: default;
   position: relative;
   overflow: hidden;
   break-inside: avoid;
   margin-bottom: 12px;
-  animation: fadeUp 0.4s ease both;
+  animation: cardReveal 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
 .mission-card::before {
@@ -310,8 +319,10 @@ header {
 }
 
 .mission-card:hover {
-  box-shadow: 0 4px 20px var(--shadow);
-  transform: translateY(-1px);
+  background: rgba(255, 253, 249, 0.85);
+  backdrop-filter: blur(12px);
+  box-shadow: 0 8px 32px rgba(26, 22, 19, 0.08), 0 0 0 1px rgba(200, 113, 58, 0.15);
+  transform: translateY(-2px) scale(1.005);
 }
 
 .mission-card.closing {
@@ -321,6 +332,16 @@ header {
   pointer-events: none;
 }
 
+/* Card collapse */
+.mission-card.collapsed .mission-pages,
+.mission-card.collapsed .actions {
+  display: none;
+}
+
+.mission-card.collapsed {
+  gap: 0;
+}
+
 /* Card header */
 .mission-top {
   display: flex;
@@ -328,6 +349,36 @@ header {
   gap: 10px;
   margin-bottom: 6px;
   flex-wrap: wrap;
+  cursor: pointer;
+  user-select: none;
+}
+
+.mission-collapse {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border: none;
+  background: none;
+  color: var(--muted);
+  cursor: pointer;
+  border-radius: 3px;
+  transition: transform 0.25s ease, color 0.15s;
+  flex-shrink: 0;
+}
+
+.mission-collapse svg {
+  width: 12px;
+  height: 12px;
+}
+
+.mission-collapse:hover {
+  color: var(--ink);
+}
+
+.mission-card.collapsed .mission-collapse {
+  transform: rotate(-90deg);
 }
 
 .mission-favicon {
@@ -370,7 +421,7 @@ header {
 .page-chip {
   color: var(--ink);
   background: transparent;
-  padding: 10px 6px;
+  padding: 10px 6px 10px 12px;
   border-radius: 0;
   border: none;
   border-bottom: 1px solid rgba(154, 145, 138, 0.1);
@@ -381,6 +432,19 @@ header {
   line-height: 1.4;
   cursor: pointer;
   transition: background 0.15s ease;
+}
+
+.page-chip::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 8px;
+  bottom: 8px;
+  width: 2px;
+  border-radius: 1px;
+  background: var(--accent-amber);
+  opacity: var(--activity-opacity, 0.1);
+  transition: opacity 0.3s ease;
 }
 
 .page-chip:last-child {
@@ -613,7 +677,8 @@ footer {
 
 .footer-stats {
   display: flex;
-  gap: 32px;
+  align-items: center;
+  gap: 24px;
 }
 
 .stat {
@@ -634,6 +699,24 @@ footer {
   letter-spacing: 1.5px;
   color: var(--muted);
   margin-top: 4px;
+}
+
+.stat-bars {
+  display: flex;
+  align-items: flex-end;
+  gap: 3px;
+  height: 32px;
+}
+
+.stat-bar {
+  width: 6px;
+  border-radius: 2px 2px 0 0;
+  min-height: 4px;
+  transition: height 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.stat-bar:hover {
+  opacity: 0.8;
 }
 
 .last-refresh {
@@ -768,4 +851,17 @@ footer {
 @keyframes fadeUp {
   from { opacity: 0; transform: translateY(12px); }
   to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes cardReveal {
+  from {
+    opacity: 0;
+    transform: translateY(20px) scale(0.96);
+    filter: blur(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    filter: blur(0);
+  }
 }

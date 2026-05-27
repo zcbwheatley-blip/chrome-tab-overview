@@ -174,11 +174,15 @@ class TabPreview {
   }
 }
 
-// --- Sidebar (Top Sites) ---
+// --- Sidebar (Top Sites with drag reorder) ---
+
+const TOP_SITES_ORDER_KEY = 'topSitesOrder';
 
 class Sidebar {
   constructor() {
     this.listEl = document.getElementById('top-sites');
+    this.sites = [];
+    this.dragSrcIndex = null;
     this.loadTopSites();
   }
 
@@ -198,7 +202,9 @@ class Sidebar {
         });
       });
       if (sites && sites.length > 0) {
-        this.render(sites);
+        this.sites = this.dedup(sites);
+        this.applyOrder();
+        this.render();
       } else {
         this.listEl.innerHTML = '<div class="top-sites__empty">No top sites yet</div>';
       }
@@ -207,22 +213,88 @@ class Sidebar {
     }
   }
 
-  render(sites) {
-    this.listEl.innerHTML = '';
-    const seenDomains = new Set();
-    for (const site of sites) {
+  dedup(sites) {
+    const seen = new Set();
+    return sites.filter(site => {
       const domain = extractDomain(site.url);
-      if (seenDomains.has(domain)) continue;
-      seenDomains.add(domain);
+      if (seen.has(domain)) return false;
+      seen.add(domain);
+      return true;
+    });
+  }
+
+  applyOrder() {
+    try {
+      const saved = JSON.parse(localStorage.getItem(TOP_SITES_ORDER_KEY));
+      if (!saved || !Array.isArray(saved)) return;
+      const urlMap = new Map(this.sites.map(s => [s.url, s]));
+      const ordered = [];
+      for (const url of saved) {
+        if (urlMap.has(url)) {
+          ordered.push(urlMap.get(url));
+          urlMap.delete(url);
+        }
+      }
+      for (const remaining of urlMap.values()) {
+        ordered.push(remaining);
+      }
+      this.sites = ordered;
+    } catch (_) {}
+  }
+
+  saveOrder() {
+    localStorage.setItem(TOP_SITES_ORDER_KEY, JSON.stringify(this.sites.map(s => s.url)));
+  }
+
+  render() {
+    this.listEl.innerHTML = '';
+    this.sites.forEach((site, index) => {
+      const domain = extractDomain(site.url);
       const faviconUrl = `chrome-extension://${chrome.runtime.id}/_favicon/?pageUrl=${encodeURIComponent(site.url)}&size=64`;
 
       const item = document.createElement('a');
       item.className = 'top-site-item';
       item.href = site.url;
       item.title = site.url;
+      item.draggable = true;
+      item.dataset.index = String(index);
+
       item.addEventListener('click', (e) => {
         e.preventDefault();
         chrome.tabs.create({ url: site.url });
+      });
+
+      item.addEventListener('dragstart', (e) => {
+        this.dragSrcIndex = index;
+        item.classList.add('dragging');
+        e.dataTransfer.effectAllowed = 'move';
+      });
+
+      item.addEventListener('dragend', () => {
+        item.classList.remove('dragging');
+        this.listEl.querySelectorAll('.drag-over').forEach(el => el.classList.remove('drag-over'));
+      });
+
+      item.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'move';
+        item.classList.add('drag-over');
+      });
+
+      item.addEventListener('dragleave', () => {
+        item.classList.remove('drag-over');
+      });
+
+      item.addEventListener('drop', (e) => {
+        e.preventDefault();
+        item.classList.remove('drag-over');
+        const targetIndex = index;
+        if (this.dragSrcIndex === null || this.dragSrcIndex === targetIndex) return;
+        const [moved] = this.sites.splice(this.dragSrcIndex, 1);
+        this.sites.splice(targetIndex, 0, moved);
+        this.dragSrcIndex = null;
+        this.saveOrder();
+        this.render();
       });
 
       const favicon = document.createElement('img');
@@ -241,7 +313,7 @@ class Sidebar {
       item.appendChild(favicon);
       item.appendChild(name);
       this.listEl.appendChild(item);
-    }
+    });
   }
 }
 
@@ -298,6 +370,7 @@ class OverviewApp {
   renderAndUpdate() {
     this.updateCount(this.allTabs.length, this.allTabs.length);
     this.renderTabs(this.allTabs);
+    this.renderStatBars();
   }
 
   handleSearch() {
@@ -351,6 +424,14 @@ class OverviewApp {
     const top = document.createElement('div');
     top.className = 'mission-top';
 
+    const collapseBtn = document.createElement('button');
+    collapseBtn.className = 'mission-collapse';
+    collapseBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5"/></svg>`;
+    collapseBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      card.classList.toggle('collapsed');
+    });
+
     const favicon = document.createElement('img');
     favicon.className = 'mission-favicon';
     favicon.src = group.favicon;
@@ -366,6 +447,11 @@ class OverviewApp {
     tag.className = 'mission-tag';
     tag.textContent = `${group.tabs.length} tabs`;
 
+    top.addEventListener('click', () => {
+      card.classList.toggle('collapsed');
+    });
+
+    top.appendChild(collapseBtn);
     top.appendChild(favicon);
     top.appendChild(name);
     top.appendChild(tag);
@@ -431,6 +517,9 @@ class OverviewApp {
     const row = document.createElement('div');
     row.className = 'page-chip';
     row.dataset.tabId = String(tab.id);
+
+    const activityOpacity = this.getActivityOpacity(tab.lastAccessed);
+    row.style.setProperty('--activity-opacity', String(activityOpacity));
 
     const favicon = document.createElement('img');
     favicon.className = 'chip-favicon';
@@ -531,6 +620,16 @@ class OverviewApp {
     return row;
   }
 
+  getActivityOpacity(lastAccessed) {
+    if (!lastAccessed) return 0.1;
+    const ageMs = Date.now() - lastAccessed;
+    const hourMs = 60 * 60 * 1000;
+    if (ageMs < hourMs) return 0.9;
+    if (ageMs < 4 * hourMs) return 0.6;
+    if (ageMs < 24 * hourMs) return 0.35;
+    return 0.1;
+  }
+
   handleTabClosed(tabId) {
     this.allTabs = this.allTabs.filter(t => t.id !== tabId);
     this.updateCount(this.allTabs.length, this.allTabs.length);
@@ -567,6 +666,25 @@ class OverviewApp {
       this.allTabs = this.filterSelf(response || []);
       this.renderAndUpdate();
     }, 300);
+  }
+
+  renderStatBars() {
+    const barsEl = document.getElementById('statBars');
+    barsEl.innerHTML = '';
+    const groups = groupTabsByDomain(this.allTabs);
+    const top = groups.slice(0, 8);
+    if (top.length === 0) return;
+    const max = top[0].tabs.length;
+
+    for (const group of top) {
+      const bar = document.createElement('div');
+      bar.className = 'stat-bar';
+      bar.title = `${group.displayName}: ${group.tabs.length}`;
+      const height = Math.max(4, (group.tabs.length / max) * 32);
+      bar.style.height = `${height}px`;
+      bar.style.background = CARD_ACCENT_COLORS[group.colorIndex];
+      barsEl.appendChild(bar);
+    }
   }
 
   setupKeyboardNav() {

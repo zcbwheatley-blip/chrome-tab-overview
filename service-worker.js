@@ -68,6 +68,7 @@ async function getAllTabs() {
     audible: tab.audible || false,
     status: tab.status || 'complete',
     groupId: tab.groupId || -1,
+    lastAccessed: tab.lastAccessed || 0,
   }));
 }
 
