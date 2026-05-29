@@ -53,7 +53,7 @@
 
     <aside class="sidebar-column">
       <div class="section-header">
-        <h2>Top Sites</h2>
+        <h2>Quick Links</h2>
         <div class="section-line"></div>
       </div>
       <div class="top-sites" id="top-sites"></div>
@@ -72,6 +72,20 @@
       <span>Tab Overview</span>
     </div>
   </footer>
+</div>
+
+<div class="site-modal-overlay" id="siteModalOverlay" hidden>
+  <div class="site-modal">
+    <div class="site-modal__title" id="siteModalTitle">Add site</div>
+    <label class="site-modal__label">
+      URL
+      <input type="url" class="site-modal__input" id="siteModalUrl" placeholder="https://github.com" autocomplete="off">
+    </label>
+    <div class="site-modal__actions">
+      <button class="site-modal__btn site-modal__btn--cancel" id="siteModalCancel">Cancel</button>
+      <button class="site-modal__btn site-modal__btn--save" id="siteModalSave">Save</button>
+    </div>
+  </div>
 </div>
 
 <div class="toast" id="toast">

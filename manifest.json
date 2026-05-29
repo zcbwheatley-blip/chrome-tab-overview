@@ -7,7 +7,7 @@
   "permissions": [
     "tabs",
     "tabGroups",
-    "topSites",
+    "storage",
     "favicon"
   ],
 

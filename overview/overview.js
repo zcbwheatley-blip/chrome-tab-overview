@@ -174,82 +174,131 @@ class TabPreview {
   }
 }
 
-// --- Sidebar (Top Sites with drag reorder) ---
+// --- Sidebar (Custom Quick Links with drag reorder) ---
 
-const TOP_SITES_ORDER_KEY = 'topSitesOrder';
+function getShortName(url) {
+  try {
+    const host = new URL(url).hostname;
+    const parts = host.replace(/^www\./, '').split('.');
+    return parts[0].charAt(0).toUpperCase() + parts[0].slice(1);
+  } catch {
+    return url;
+  }
+}
+
+const CUSTOM_SITES_KEY = 'customSites';
 
 class Sidebar {
   constructor() {
     this.listEl = document.getElementById('top-sites');
     this.sites = [];
     this.dragSrcIndex = null;
-    this.loadTopSites();
+    this.editingId = null;
+    this.setupModal();
+    this.load();
   }
 
-  async loadTopSites() {
-    if (!chrome.topSites) {
-      this.listEl.innerHTML = '<div class="top-sites__empty">Top Sites not available</div>';
-      return;
-    }
+  async load() {
     try {
-      const sites = await new Promise((resolve, reject) => {
-        chrome.topSites.get((result) => {
-          if (chrome.runtime.lastError) {
-            reject(chrome.runtime.lastError);
-          } else {
-            resolve(result);
-          }
-        });
-      });
-      if (sites && sites.length > 0) {
-        this.sites = this.dedup(sites);
-        this.applyOrder();
-        this.render();
-      } else {
-        this.listEl.innerHTML = '<div class="top-sites__empty">No top sites yet</div>';
-      }
+      const result = await chrome.storage.local.get(CUSTOM_SITES_KEY);
+      this.sites = result[CUSTOM_SITES_KEY] || [];
     } catch (_) {
-      this.listEl.innerHTML = '<div class="top-sites__empty">Unable to load top sites</div>';
+      this.sites = [];
     }
+    this.render();
   }
 
-  dedup(sites) {
-    const seen = new Set();
-    return sites.filter(site => {
-      const domain = extractDomain(site.url);
-      if (seen.has(domain)) return false;
-      seen.add(domain);
-      return true;
+  async save() {
+    await chrome.storage.local.set({ [CUSTOM_SITES_KEY]: this.sites });
+  }
+
+  setupModal() {
+    this.overlay = document.getElementById('siteModalOverlay');
+    this.modalTitle = document.getElementById('siteModalTitle');
+    this.urlInput = document.getElementById('siteModalUrl');
+
+    document.getElementById('siteModalCancel').addEventListener('click', () => this.closeModal());
+    document.getElementById('siteModalSave').addEventListener('click', () => this.handleSave());
+
+    this.overlay.addEventListener('click', (e) => {
+      if (e.target === this.overlay) this.closeModal();
+    });
+
+    this.overlay.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') this.closeModal();
+      if (e.key === 'Enter') this.handleSave();
     });
   }
 
-  applyOrder() {
-    try {
-      const saved = JSON.parse(localStorage.getItem(TOP_SITES_ORDER_KEY));
-      if (!saved || !Array.isArray(saved)) return;
-      const urlMap = new Map(this.sites.map(s => [s.url, s]));
-      const ordered = [];
-      for (const url of saved) {
-        if (urlMap.has(url)) {
-          ordered.push(urlMap.get(url));
-          urlMap.delete(url);
-        }
-      }
-      for (const remaining of urlMap.values()) {
-        ordered.push(remaining);
-      }
-      this.sites = ordered;
-    } catch (_) {}
+  openModal(site = null) {
+    this.editingId = site ? site.id : null;
+    this.modalTitle.textContent = site ? 'Edit site' : 'Add site';
+    this.urlInput.value = site ? site.url : '';
+    this.overlay.hidden = false;
+    this.urlInput.focus();
   }
 
-  saveOrder() {
-    localStorage.setItem(TOP_SITES_ORDER_KEY, JSON.stringify(this.sites.map(s => s.url)));
+  closeModal() {
+    this.overlay.hidden = true;
+    this.editingId = null;
+    this.urlInput.value = '';
+  }
+
+  handleSave() {
+    let url = this.urlInput.value.trim();
+    if (!url) return;
+
+    if (!/^https?:\/\//i.test(url)) {
+      url = 'https://' + url;
+    }
+
+    const name = getShortName(url);
+
+    if (this.editingId) {
+      this.sites = this.sites.map(s =>
+        s.id === this.editingId ? { ...s, name, url } : s
+      );
+    } else {
+      this.sites = [...this.sites, { id: Date.now().toString(36), name, url }];
+    }
+
+    this.save();
+    this.render();
+    this.closeModal();
+    showToast(this.editingId ? 'Site updated' : 'Site added');
+  }
+
+  addSiteFromUrl(url) {
+    const exists = this.sites.some(s => s.url === url);
+    if (exists) {
+      showToast('Already in Quick Links');
+      return;
+    }
+    const name = getShortName(url);
+    this.sites = [...this.sites, { id: Date.now().toString(36), name, url }];
+    this.save();
+    this.render();
+    showToast(`Added ${name} to Quick Links`);
+  }
+
+  deleteSite(id) {
+    this.sites = this.sites.filter(s => s.id !== id);
+    this.save();
+    this.render();
+    showToast('Site removed');
   }
 
   render() {
     this.listEl.innerHTML = '';
+
+    if (this.sites.length === 0) {
+      const empty = document.createElement('div');
+      empty.className = 'top-sites__empty';
+      empty.textContent = 'Add your first site';
+      this.listEl.appendChild(empty);
+    }
+
     this.sites.forEach((site, index) => {
-      const domain = extractDomain(site.url);
       const faviconUrl = `chrome-extension://${chrome.runtime.id}/_favicon/?pageUrl=${encodeURIComponent(site.url)}&size=64`;
 
       const item = document.createElement('a');
@@ -264,6 +313,7 @@ class Sidebar {
         chrome.tabs.create({ url: site.url });
       });
 
+      // Drag events
       item.addEventListener('dragstart', (e) => {
         this.dragSrcIndex = index;
         item.classList.add('dragging');
@@ -290,13 +340,16 @@ class Sidebar {
         item.classList.remove('drag-over');
         const targetIndex = index;
         if (this.dragSrcIndex === null || this.dragSrcIndex === targetIndex) return;
-        const [moved] = this.sites.splice(this.dragSrcIndex, 1);
-        this.sites.splice(targetIndex, 0, moved);
+        const moved = this.sites[this.dragSrcIndex];
+        const updated = this.sites.filter((_, i) => i !== this.dragSrcIndex);
+        updated.splice(targetIndex, 0, moved);
+        this.sites = updated;
         this.dragSrcIndex = null;
-        this.saveOrder();
+        this.save();
         this.render();
       });
 
+      // Favicon
       const favicon = document.createElement('img');
       favicon.className = 'top-site-item__favicon';
       favicon.src = faviconUrl;
@@ -306,14 +359,50 @@ class Sidebar {
         favicon.style.background = 'var(--warm-gray)';
       };
 
-      const name = document.createElement('div');
-      name.className = 'top-site-item__name';
-      name.textContent = getDisplayName(domain);
+      // Name
+      const nameEl = document.createElement('div');
+      nameEl.className = 'top-site-item__name';
+      nameEl.textContent = site.name;
+
+      // Hover overlay (edit + delete)
+      const overlay = document.createElement('div');
+      overlay.className = 'top-site-item__overlay';
+
+      const editBtn = document.createElement('button');
+      editBtn.className = 'top-site-item__action';
+      editBtn.title = 'Edit';
+      editBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L6.832 19.82a4.5 4.5 0 0 1-1.897 1.13l-2.685.8.8-2.685a4.5 4.5 0 0 1 1.13-1.897L16.863 4.487Z"/></svg>`;
+      editBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        this.openModal(site);
+      });
+
+      const deleteBtn = document.createElement('button');
+      deleteBtn.className = 'top-site-item__action top-site-item__action--delete';
+      deleteBtn.title = 'Delete';
+      deleteBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12"/></svg>`;
+      deleteBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        this.deleteSite(site.id);
+      });
+
+      overlay.appendChild(editBtn);
+      overlay.appendChild(deleteBtn);
 
       item.appendChild(favicon);
-      item.appendChild(name);
+      item.appendChild(nameEl);
+      item.appendChild(overlay);
       this.listEl.appendChild(item);
     });
+
+    // Add button
+    const addBtn = document.createElement('button');
+    addBtn.className = 'top-site-add';
+    addBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15"/></svg>Add`;
+    addBtn.addEventListener('click', () => this.openModal());
+    this.listEl.appendChild(addBtn);
   }
 }
 
@@ -447,6 +536,16 @@ class OverviewApp {
     tag.className = 'mission-tag';
     tag.textContent = `${group.tabs.length} tabs`;
 
+    const addLinkBtn = document.createElement('button');
+    addLinkBtn.className = 'mission-add-link';
+    addLinkBtn.dataset.tooltip = 'Add to Quick Links';
+    addLinkBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15"/></svg>`;
+    addLinkBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const url = group.tabs[0].url;
+      this.sidebar.addSiteFromUrl(url);
+    });
+
     top.addEventListener('click', () => {
       card.classList.toggle('collapsed');
     });
@@ -454,6 +553,7 @@ class OverviewApp {
     top.appendChild(collapseBtn);
     top.appendChild(favicon);
     top.appendChild(name);
+    top.appendChild(addLinkBtn);
     top.appendChild(tag);
 
     const pages = document.createElement('div');
