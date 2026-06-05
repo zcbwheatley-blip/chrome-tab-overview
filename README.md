@@ -78,23 +78,9 @@ A Chrome extension that provides a beautiful tab manager with automatic domain g
 | `/` | Focus search bar |
 | `Escape` | Clear search and blur |
 
-## Tech Stack
 
-- **Pure JavaScript** — No build step, no framework, no dependencies
-- **Chrome Extension Manifest V3**
-- **CSS Custom Properties** — Design tokens for consistent theming
-- **Google Fonts** — Newsreader (serif headings) + DM Sans (body)
-- **Chrome APIs** — tabs, tabGroups, topSites, favicon
 
-## Design
 
-Visual style inspired by [tab-out](https://github.com/zarazhangrui/tab-out) — warm paper aesthetic with subtle noise texture, serif/sans-serif type pairing, and editorial card layout.
-
-Key design choices:
-- Warm color palette (`#f8f5f0` paper, `#1a1613` ink, `#c8713a` amber accent)
-- SVG fractal noise texture overlay
-- Staggered fade-up entrance animations
-- Masonry card grid with colored accent borders
 
 ## Project Structure
 
