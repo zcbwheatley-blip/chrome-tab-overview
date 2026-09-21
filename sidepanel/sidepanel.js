@@ -416,10 +416,18 @@ class PanelApp {
     chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
       // URL change may move the tab between domain groups → full refresh.
       // Title/favicon changes only affect one row → update in place.
+      const prev = this.allTabs.find(t => t.id === tabId);
       if (changeInfo.url) {
-        // Reloads often re-emit the identical URL — skip if unchanged
-        const prev = this.allTabs.find(t => t.id === tabId);
+        // Identical URL re-emitted on reloads — skip entirely
         if (prev && prev.url === changeInfo.url) return;
+        // Same-domain URL change (SPA navigation): grouping is per-domain,
+        // so the tab stays in its group — patch the row in place.
+        if (prev && extractDomain(prev.url) === extractDomain(changeInfo.url)) {
+          prev.url = changeInfo.url;
+          this.updateRowInPlace(tabId, { title: changeInfo.title, favIconUrl: changeInfo.favIconUrl });
+          return;
+        }
+        // Cross-domain move → grouping may change → full refresh
         this.refresh();
       } else if (changeInfo.title || changeInfo.favIconUrl) {
         this.updateRowInPlace(tabId, changeInfo);
