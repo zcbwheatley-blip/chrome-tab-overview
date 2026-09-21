@@ -410,11 +410,30 @@ class PanelApp {
     chrome.tabs.onUpdated.addListener((_tabId, changeInfo) => {
       if (changeInfo.title || changeInfo.url || changeInfo.favIconUrl) this.refresh();
     });
-    // Native group collapse changes (from the browser tab strip) flow back in
+    // Native group collapse changes (from the browser tab strip) update
+    // only the matching group in place — no full re-render flicker
     if (chrome.tabGroups?.onUpdated) {
-      chrome.tabGroups.onUpdated.addListener((group) => {
-        if ('collapsed' in group) this.refresh();
+      chrome.tabGroups.onUpdated.addListener((group, changeInfo) => {
+        if (!changeInfo || !('collapsed' in changeInfo)) return;
+        this.syncGroupCollapsed(group.windowId, group.title, !group.collapsed);
       });
+    }
+  }
+
+  // Update one group's expand state in place (no full re-render)
+  syncGroupCollapsed(windowId, groupTitle, open) {
+    if (!groupTitle) return;
+    const base = groupTitle.replace(/\s*\(\d+\)$/, '');
+    const items = this.listEl.querySelectorAll(
+      `.domain-item[data-window-id="${windowId}"][data-domain]`);
+    for (const item of items) {
+      // Match by the native group's base title against the display name
+      const nameEl = item.querySelector('.domain-name');
+      if (nameEl && nameEl.textContent === base) {
+        item.classList.toggle('open', open);
+        if (open) this.expanded.add(item.dataset.domain);
+        else this.expanded.delete(item.dataset.domain);
+      }
     }
   }
 
@@ -657,6 +676,9 @@ class PanelApp {
   createDomainItem(group, windowId) {
     const item = document.createElement('div');
     item.className = 'domain-item';
+    // Identifiers for incremental updates from native group events
+    item.dataset.domain = group.domain;
+    item.dataset.windowId = String(windowId);
     // Chrome-group-style rotating pill color
     item.style.setProperty('--pill-bg', `var(--pill-${(group.colorIndex % 8) + 1}-bg)`);
     item.style.setProperty('--pill-ink', `var(--pill-${(group.colorIndex % 8) + 1}-ink)`);
