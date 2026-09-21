@@ -8,8 +8,13 @@
     "tabs",
     "tabGroups",
     "storage",
-    "favicon"
+    "favicon",
+    "sidePanel"
   ],
+
+  "side_panel": {
+    "default_path": "sidepanel/sidepanel.html"
+  },
 
   "background": {
     "service_worker": "service-worker.js",

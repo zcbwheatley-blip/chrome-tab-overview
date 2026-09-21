@@ -2,6 +2,16 @@ import { extractDomain, getDisplayName, isInternalUrl, domainHash } from './shar
 
 const GROUP_COLORS = ['blue', 'red', 'yellow', 'green', 'pink', 'purple', 'cyan', 'orange', 'grey'];
 
+// --- Side panel ---
+// Panel page is declared in manifest ("side_panel.default_path"); the SW only
+// makes the toolbar icon open it. Guarded: chrome.sidePanel is undefined if
+// the manifest in effect predates the sidePanel permission.
+if (chrome.sidePanel) {
+  chrome.sidePanel
+    .setPanelBehavior({ openPanelOnActionClick: true })
+    .catch((e) => console.warn('setPanelBehavior failed:', e));
+}
+
 // --- Action: open overview ---
 
 chrome.action.onClicked.addListener(async () => {
@@ -60,6 +70,7 @@ async function getAllTabs() {
   return tabs.map(tab => ({
     id: tab.id,
     windowId: tab.windowId,
+    index: tab.index,
     title: tab.title || 'Untitled',
     url: tab.url || '',
     domain: extractDomain(tab.url || ''),
