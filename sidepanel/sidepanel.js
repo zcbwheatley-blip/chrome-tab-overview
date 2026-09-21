@@ -404,11 +404,26 @@ class PanelApp {
 
   async init() {
     await this.refreshNow();
-    chrome.tabs.onRemoved.addListener(() => this.refresh());
+    chrome.tabs.onRemoved.addListener((tabId, removeInfo) => {
+      if (removeInfo.isWindowClosing) return;
+      this.removeTabInPlace(tabId);
+    });
     chrome.tabs.onCreated.addListener(() => this.refresh());
-    chrome.tabs.onActivated.addListener(() => this.refresh());
-    chrome.tabs.onUpdated.addListener((_tabId, changeInfo) => {
-      if (changeInfo.title || changeInfo.url || changeInfo.favIconUrl) this.refresh();
+    // Active-tab change: move the highlight in place, no re-render
+    chrome.tabs.onActivated.addListener(({ tabId, windowId }) => {
+      this.syncActiveTab(tabId, windowId);
+    });
+    chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
+      // URL change may move the tab between domain groups → full refresh.
+      // Title/favicon changes only affect one row → update in place.
+      if (changeInfo.url) {
+        // Reloads often re-emit the identical URL — skip if unchanged
+        const prev = this.allTabs.find(t => t.id === tabId);
+        if (prev && prev.url === changeInfo.url) return;
+        this.refresh();
+      } else if (changeInfo.title || changeInfo.favIconUrl) {
+        this.updateRowInPlace(tabId, changeInfo);
+      }
     });
     // Native group collapse changes (from the browser tab strip) update
     // only the matching group in place — no full re-render flicker
@@ -417,6 +432,121 @@ class PanelApp {
         if (!changeInfo || !('collapsed' in changeInfo)) return;
         this.syncGroupCollapsed(group.windowId, group.title, !group.collapsed);
       });
+    }
+  }
+
+  // Remove a closed tab's row in place. Group-level effects handled too:
+  // group emptied → remove the group; group dropped to one tab → demote pill.
+  // Row numbers left for the next full refresh (rarely noticed).
+  removeTabInPlace(tabId) {
+    const closed = this.allTabs.find(t => t.id === tabId);
+    this.allTabs = this.allTabs.filter(t => t.id !== tabId);
+    this.updateDupeBadge();
+    if (!closed) {
+      this.refresh();
+      return;
+    }
+
+    const item = Array.from(this.listEl.querySelectorAll('.domain-item'))
+      .find(el => el.querySelector(`[data-tab-id="${tabId}"]`));
+    if (!item) {
+      // Tab wasn't rendered (collapsed group, other window section) — but the
+      // group counts may have changed, so do a safe full refresh
+      this.refresh();
+      return;
+    }
+
+    item.querySelectorAll(`[data-tab-id="${tabId}"]`).forEach(r => r.remove());
+
+    const header = item.querySelector('.domain-header');
+    const nameEl = item.querySelector('.domain-name');
+    // Remaining count for this domain = tabs in allTabs with same window+domain
+    const domain = item.dataset.domain;
+    const winId = Number(item.dataset.windowId);
+    const remainingCount = this.allTabs.filter(
+      t => t.windowId === winId && extractDomain(t.url) === domain).length;
+
+    if (remainingCount === 0) {
+      item.remove();
+    } else if (remainingCount === 1 && header.classList.contains('pill')) {
+      // Pill demotes to a plain row — simplest correct path is a refresh of
+      // just this group's DOM; rare enough that a refresh is acceptable
+      this.refresh();
+      return;
+    } else {
+      // Update counts in place
+      const countEl = item.querySelector('.domain-count');
+      const badgeEl = item.querySelector('.domain-count-badge');
+      if (countEl) countEl.textContent = `(${remainingCount})`;
+      if (badgeEl) badgeEl.textContent = String(remainingCount);
+    }
+    this.updateWindowStats();
+  }
+
+  // Recompute per-window grouped/standalone counters in place
+  updateWindowStats() {
+    for (const section of this.listEl.querySelectorAll('.window-section')) {
+      const winTabs = this.allTabs.filter(t => t.windowId === Number(section.dataset.windowId));
+      const counts = new Map();
+      for (const tab of winTabs) {
+        const d = extractDomain(tab.url);
+        counts.set(d, (counts.get(d) || 0) + 1);
+      }
+      const groupCount = [...counts.values()].filter(n => n > 1).length;
+      const singleCount = [...counts.values()].filter(n => n === 1).reduce((a, b) => a + b, 0);
+      const spans = section.querySelectorAll('.section-stats span');
+      if (spans[0]) spans[0].textContent = String(groupCount);
+      if (spans[1]) spans[1].textContent = String(singleCount);
+    }
+  }
+
+  updateDupeBadge() {
+    const seenUrls = new Set();
+    let dupeCount = 0;
+    for (const tab of this.allTabs) {
+      if (seenUrls.has(tab.url)) dupeCount++;
+      else seenUrls.add(tab.url);
+    }
+    const badge = document.getElementById('dupeBadge');
+    if (badge) {
+      badge.hidden = dupeCount === 0;
+      badge.textContent = String(dupeCount);
+    }
+  }
+
+  // Move the active-row highlight in place; full refresh only when the
+  // newly activated tab is in a different window (section order changes)
+  syncActiveTab(tabId, windowId) {
+    if (windowId !== this.activeWindowId) {
+      this.refresh();
+      return;
+    }
+    const prev = this.activeTabId;
+    this.activeTabId = tabId;
+    if (prev != null) {
+      const old = this.listEl.querySelector(`[data-tab-id="${prev}"]`);
+      if (old) old.classList.remove('active');
+    }
+    const next = this.listEl.querySelector(`[data-tab-id="${tabId}"]`);
+    if (next) next.classList.add('active');
+  }
+
+  // Patch one tab row's title/favicon without re-rendering the list
+  updateRowInPlace(tabId, changeInfo) {
+    const el = this.listEl.querySelector(`[data-tab-id="${tabId}"]`);
+    if (!el) {
+      // Row not on screen (e.g. group collapsed) — fall back to refresh
+      this.refresh();
+      return;
+    }
+    const titleEl = el.querySelector('.tab-title, .gallery-card__title');
+    if (titleEl && changeInfo.title) {
+      titleEl.textContent = shortenTitle(changeInfo.title) || changeInfo.url || titleEl.textContent;
+    }
+    const favEl = el.querySelector('.tab-favicon, .gallery-card__favicon');
+    if (favEl && changeInfo.favIconUrl) {
+      favEl.src = changeInfo.favIconUrl;
+      favEl.style.visibility = '';
     }
   }
 
@@ -502,18 +632,7 @@ class PanelApp {
           tab.url.toLowerCase().includes(this.query))
       : this.allTabs;
     const total = tabs.length;
-    // Duplicate badge: number of redundant tabs Dedupe would close
-    const seenUrls = new Set();
-    let dupeCount = 0;
-    for (const tab of this.allTabs) {
-      if (seenUrls.has(tab.url)) dupeCount++;
-      else seenUrls.add(tab.url);
-    }
-    const badge = document.getElementById('dupeBadge');
-    if (badge) {
-      badge.hidden = dupeCount === 0;
-      badge.textContent = String(dupeCount);
-    }
+    this.updateDupeBadge();
     this.listEl.innerHTML = '';
 
     if (total === 0) {
@@ -538,6 +657,7 @@ class PanelApp {
       const winTabs = byWindow.get(windowId);
       const section = document.createElement('section');
       section.className = 'cw-section window-section';
+      section.dataset.windowId = String(windowId);
 
       const header = document.createElement('div');
       header.className = 'section-header cw-header';
@@ -747,10 +867,12 @@ class PanelApp {
       headRow.appendChild(minis);
     }
 
-    const isOpen = this.expanded.has(group.domain);
-
+    // Always render a body with tab rows so incremental updates
+    // (reload/close of single-tab domains) can find rows by tab id.
     if (group.tabs.length === 1) {
-      // Single-tab domain switches directly, no chevron
+      // Single-tab domain: no chevron, no pill; header switches directly.
+      // Body still holds the row (hidden via CSS) for update lookups.
+      item.classList.add('single');
       header.addEventListener('click', () => {
         chrome.runtime.sendMessage({
           type: 'SWITCH_TO_TAB',
@@ -758,37 +880,40 @@ class PanelApp {
           windowId: group.tabs[0].windowId,
         });
       });
+      body.appendChild(this.createListRow(group.tabs[0]));
+      item.appendChild(headRow);
+      item.appendChild(body);
+      return item;
+    }
+    // Chevron leads the row (leftmost)
+    const chevron = document.createElement('span');
+    chevron.className = 'domain-chevron';
+    chevron.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m9 18 6-6-6-6"/></svg>`;
+    header.insertBefore(chevron, header.firstChild);
+    // Expand state mirrors the native browser group when one exists;
+    // otherwise falls back to the manual per-domain state.
+    const native = this.findNativeGroup(group.displayName, windowId);
+    const open = this.query ? true : (native ? !native.collapsed : isOpen);
+    item.classList.toggle('open', open);
+    header.addEventListener('click', () => {
+      const nowOpen = item.classList.toggle('open');
+      if (nowOpen) this.expanded.add(group.domain);
+      else this.expanded.delete(group.domain);
+      // Sync to the native tab strip group
+      if (native) {
+        chrome.tabGroups.update(native.id, { collapsed: !nowOpen }).catch(() => {});
+      }
+    });
+    if (this.view === 'gallery') {
+      const grid = document.createElement('div');
+      grid.className = 'gallery-grid';
+      for (const tab of group.tabs) {
+        grid.appendChild(this.createGalleryCard(tab, group));
+      }
+      body.appendChild(grid);
     } else {
-      // Chevron leads the row (leftmost)
-      const chevron = document.createElement('span');
-      chevron.className = 'domain-chevron';
-      chevron.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m9 18 6-6-6-6"/></svg>`;
-      header.insertBefore(chevron, header.firstChild);
-      // Expand state mirrors the native browser group when one exists;
-      // otherwise falls back to the manual per-domain state.
-      const native = this.findNativeGroup(group.displayName, windowId);
-      const open = this.query ? true : (native ? !native.collapsed : isOpen);
-      item.classList.toggle('open', open);
-      header.addEventListener('click', () => {
-        const nowOpen = item.classList.toggle('open');
-        if (nowOpen) this.expanded.add(group.domain);
-        else this.expanded.delete(group.domain);
-        // Sync to the native tab strip group
-        if (native) {
-          chrome.tabGroups.update(native.id, { collapsed: !nowOpen }).catch(() => {});
-        }
-      });
-      if (this.view === 'gallery') {
-        const grid = document.createElement('div');
-        grid.className = 'gallery-grid';
-        for (const tab of group.tabs) {
-          grid.appendChild(this.createGalleryCard(tab, group));
-        }
-        body.appendChild(grid);
-      } else {
-        for (const tab of group.tabs) {
-          body.appendChild(this.createListRow(tab));
-        }
+      for (const tab of group.tabs) {
+        body.appendChild(this.createListRow(tab));
       }
     }
 
@@ -800,6 +925,7 @@ class PanelApp {
   createListRow(tab) {
     const row = document.createElement('div');
     row.className = 'tab-row';
+    row.dataset.tabId = String(tab.id);
     row.title = tab.url;
     if (tab.id === this.activeTabId) row.classList.add('active');
 
@@ -873,6 +999,7 @@ class PanelApp {
   createGalleryCard(tab, group) {
     const card = document.createElement('button');
     card.className = 'gallery-card';
+    card.dataset.tabId = String(tab.id);
     card.title = tab.url;
     card.style.setProperty('--card-accent', CARD_ACCENT_COLORS[group.colorIndex]);
 

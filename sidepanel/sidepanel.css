@@ -1277,3 +1277,9 @@ body {
   color: var(--ink);
   background: var(--line);
 }
+
+/* Single-tab domains: header is the row; the hidden body row exists only
+   as a lookup anchor for incremental title/favicon/close updates */
+.domain-item.single .domain-body {
+  display: none;
+}
