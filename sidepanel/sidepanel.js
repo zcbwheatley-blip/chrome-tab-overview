@@ -408,7 +408,49 @@ class PanelApp {
       if (removeInfo.isWindowClosing) return;
       this.removeTabInPlace(tabId);
     });
-    chrome.tabs.onCreated.addListener(() => this.refresh());
+    chrome.tabs.onCreated.addListener((tab) => {
+      // tab.url is usually empty at creation time and fills in async — poll
+      // briefly until the URL resolves (or the tab is known-internal), then
+      // route: same-domain-as-existing → rebuild that group only; anything
+      // else → full refresh for correct ordering.
+      const deadline = Date.now() + 2500;
+      const decide = async () => {
+        let resolved;
+        try {
+          resolved = await chrome.tabs.get(tab.id);
+        } catch (_) {
+          return; // tab closed again before it settled — onRemoved handles it
+        }
+        const url = resolved.url || '';
+        const domain = extractDomain(url);
+        const urlReady = url !== '' && url !== 'about:blank';
+        if (!urlReady && Date.now() < deadline) {
+          setTimeout(decide, 150);
+          return;
+        }
+        if (!urlReady || domain === 'other') {
+          this.refresh();
+          return;
+        }
+        const existing = this.allTabs.some(
+          t => t.windowId === resolved.windowId && extractDomain(t.url) === domain);
+        if (existing) {
+          // Skip if an earlier event already added it to the cache
+          if (this.allTabs.some(t => t.id === tab.id)) return;
+          this.allTabs.push({
+            id: resolved.id, windowId: resolved.windowId, index: resolved.index,
+            title: resolved.title || 'Untitled', url,
+            domain, favIconUrl: resolved.favIconUrl || '', pinned: resolved.pinned || false,
+            audible: resolved.audible || false, status: resolved.status || 'complete',
+            groupId: resolved.groupId || -1, lastAccessed: resolved.lastAccessed || 0,
+          });
+          this.rebuildDomainItem(domain, resolved.windowId);
+        } else {
+          this.refresh();
+        }
+      };
+      decide();
+    });
     // Active-tab change: move the highlight in place, no re-render
     chrome.tabs.onActivated.addListener(({ tabId, windowId }) => {
       this.syncActiveTab(tabId, windowId);
@@ -443,6 +485,40 @@ class PanelApp {
     }
   }
 
+  // Rebuild exactly one group's DOM in place (used when a group transitions
+  // between single-tab and multi-tab — pill appears/disappears). All other
+  // groups stay untouched.
+  rebuildDomainItem(domain, windowId) {
+    const old = this.listEl.querySelector(
+      `.domain-item[data-window-id="${windowId}"][data-domain="${domain}"]`);
+    if (!old) {
+      this.refresh();
+      return;
+    }
+    const winTabs = this.allTabs.filter(
+      t => t.windowId === windowId && extractDomain(t.url) === domain)
+      .sort((a, b) => a.index - b.index);
+    if (winTabs.length === 0) {
+      old.remove();
+      this.updateWindowStats();
+      return;
+    }
+    const group = {
+      domain,
+      displayName: getDisplayName(domain),
+      favicon: winTabs[0].favIconUrl || '',
+      colorIndex: domainColorIndex(domain),
+      tabs: winTabs,
+    };
+    const fresh = this.createDomainItem(group, windowId);
+    // Preserve the previous expand state for multi-tab groups
+    if (winTabs.length > 1 && old.classList.contains('open')) {
+      fresh.classList.add('open');
+    }
+    old.replaceWith(fresh);
+    this.updateWindowStats();
+  }
+
   // Remove a closed tab's row in place. Group-level effects handled too:
   // group emptied → remove the group; group dropped to one tab → demote pill.
   // Row numbers left for the next full refresh (rarely noticed).
@@ -467,7 +543,6 @@ class PanelApp {
     item.querySelectorAll(`[data-tab-id="${tabId}"]`).forEach(r => r.remove());
 
     const header = item.querySelector('.domain-header');
-    const nameEl = item.querySelector('.domain-name');
     // Remaining count for this domain = tabs in allTabs with same window+domain
     const domain = item.dataset.domain;
     const winId = Number(item.dataset.windowId);
@@ -476,19 +551,18 @@ class PanelApp {
 
     if (remainingCount === 0) {
       item.remove();
+      this.updateWindowStats();
     } else if (remainingCount === 1 && header.classList.contains('pill')) {
-      // Pill demotes to a plain row — simplest correct path is a refresh of
-      // just this group's DOM; rare enough that a refresh is acceptable
-      this.refresh();
-      return;
+      // Pill demotes to a plain row — rebuild just this group's DOM
+      this.rebuildDomainItem(domain, winId);
     } else {
       // Update counts in place
       const countEl = item.querySelector('.domain-count');
       const badgeEl = item.querySelector('.domain-count-badge');
       if (countEl) countEl.textContent = `(${remainingCount})`;
       if (badgeEl) badgeEl.textContent = String(remainingCount);
+      this.updateWindowStats();
     }
-    this.updateWindowStats();
   }
 
   // Recompute per-window grouped/standalone counters in place
@@ -543,8 +617,12 @@ class PanelApp {
   updateRowInPlace(tabId, changeInfo) {
     const el = this.listEl.querySelector(`[data-tab-id="${tabId}"]`);
     if (!el) {
-      // Row not on screen (e.g. group collapsed) — fall back to refresh
-      this.refresh();
+      // Tab not in cache yet (just created, pending the onCreated resolve):
+      // ignore — the delayed decision will render it. Otherwise the row is
+      // off-screen (collapsed group) → safe full refresh.
+      if (this.allTabs.some(t => t.id === tabId)) {
+        this.refresh();
+      }
       return;
     }
     const titleEl = el.querySelector('.tab-title, .gallery-card__title');
@@ -900,6 +978,7 @@ class PanelApp {
     header.insertBefore(chevron, header.firstChild);
     // Expand state mirrors the native browser group when one exists;
     // otherwise falls back to the manual per-domain state.
+    const isOpen = this.expanded.has(group.domain);
     const native = this.findNativeGroup(group.displayName, windowId);
     const open = this.query ? true : (native ? !native.collapsed : isOpen);
     item.classList.toggle('open', open);
